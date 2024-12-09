@@ -4,6 +4,7 @@ import random
 
 class Model:
     def __init__(self):
+        # Встановлення з'єднання з базою даних
         self.conn = psycopg2.connect(
             dbname='postgres',
             user='postgres',
@@ -14,19 +15,23 @@ class Model:
 
     def get_all_tables(self):
         c = self.conn.cursor()
+        # Запит для отримання всіх таблиць з публічної схеми
         c.execute("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
         return c.fetchall()
 
     def get_all_columns(self, table_name):
         c = self.conn.cursor()
+        # Запит для отримання всіх колонок конкретної таблиці
         c.execute("SELECT column_name FROM information_schema.columns WHERE table_name = %s", (table_name,))
         return c.fetchall()
 
     def add_data(self, table_name, columns, val):
         c = self.conn.cursor()
+        # Формування запиту для вставки даних у таблицю
         columns_str = ', '.join(f'"{col}"' for col in columns)
         placeholders = ', '.join(['%s'] * len(val))
 
+        # Перевірка наявності ідентифікаторів в таблиці
         if table_name == 'Students-subjects':
             id_column = 'ID_connected'
         else:
@@ -40,35 +45,37 @@ class Model:
         val[identifier_index] = int(val[identifier_index])
 
         if val[identifier_index] in existing_identifiers:
-            return 2
+            return 2  # Ідентифікатор вже існує
 
+        # Перевірка на правильність зв'язків між студентами та предметами
         if table_name == 'Students-subjects':
             c.execute('SELECT "ID" FROM "Students"')
             student_ids = [item[0] for item in c.fetchall()]
             student_id_index = columns.index('StudentsID')
             if int(val[student_id_index]) not in student_ids:
-                return 3
+                return 3  # Студент не знайдений
 
             c.execute('SELECT "ID" FROM "Subjects"')
             subject_ids = [item[0] for item in c.fetchall()]
             subject_id_index = columns.index('SubjectsID')
             if int(val[subject_id_index]) not in subject_ids:
-                return 3
+                return 3  # Предмет не знайдений
 
         elif table_name == 'Grades':
             c.execute('SELECT "ID_connected" FROM "Students-subjects"')
             ss_ids = [item[0] for item in c.fetchall()]
             ss_id_index = columns.index('ConnectedID')
             if int(val[ss_id_index]) not in ss_ids:
-                return 3
+                return 3  # Невірний зв'язок між студентами та предметами
 
         c.execute(f'INSERT INTO "{table_name}" ({columns_str}) VALUES ({placeholders})', val)
         self.conn.commit()
-        return 1
+        return 1  # Дані успішно додано
 
     def edit_data(self, table_name, column, id, new_value):
         c = self.conn.cursor()
 
+        # Перевірка наявності ідентифікаторів у таблиці
         if table_name == 'Students-subjects':
             id_column = 'ID_connected'
         else:
@@ -80,8 +87,9 @@ class Model:
             existing_identifiers = [item for sublist in existing_identifiers for item in sublist]
             val_id = int(new_value)
             if val_id in existing_identifiers:
-                return 2
+                return 2  # Ідентифікатор вже існує
 
+        # Перевірка на правильність змін
         elif column in ['StudentsID', 'SubjectsID', 'ConnectedID']:
             referenced_table = {
                 'StudentsID': 'Students',
@@ -94,11 +102,11 @@ class Model:
             referenced_values = [item[0] for item in c.fetchall()]
             val_id = int(new_value)
             if val_id not in referenced_values:
-                return 3
+                return 3  # Некоректний ідентифікатор для зв'язку
 
         c.execute(f'UPDATE "{table_name}" SET "{column}" = %s WHERE "{id_column}" = %s', (new_value, id))
         self.conn.commit()
-        return 1
+        return 1  # Дані успішно оновлені
 
     def delete_data(self, table_name, id):
         c = self.conn.cursor()
@@ -106,6 +114,7 @@ class Model:
         try:
             self.conn.autocommit = False
 
+            # Видалення даних зі зв'язками
             if table_name == 'Students':
                 c.execute('SELECT "ID_connected" FROM "Students-subjects" WHERE "StudentsID" = %s', (id,))
                 ss_ids = [row[0] for row in c.fetchall()]
@@ -134,7 +143,7 @@ class Model:
                 c.execute('DELETE FROM "Grades" WHERE "ID" = %s', (id,))
 
             self.conn.commit()
-            return 1
+            return 1  # Дані успішно видалено
 
         except Exception as e:
             self.conn.rollback()
@@ -148,6 +157,7 @@ class Model:
         c.execute(f"SELECT column_name, data_type FROM information_schema.columns WHERE table_name = %s", (table_name,))
         columns_info = c.fetchall()
 
+        # Генерація випадкових даних для таблиці
         for i in range(count):
             columns = []
             values = []
